@@ -9887,6 +9887,79 @@ def ___make_guard_fn():
 
         self.assertEqual(actual, expected)
 
+    def test_cxx_pytree_tree_flatten(self):
+        import torch.utils._cxx_pytree as pytree
+
+        def fn(x):
+            tree = {
+                "a": [x, x - 1],
+                "b": x + 2,
+                "c": (
+                    x,
+                    3.0,
+                    collections.deque([0.0, -x]),
+                ),
+                "d": collections.OrderedDict(
+                    {
+                        "e": (2 * x, None),
+                        "f": mytuple(x, x + 1, torch.zeros(4, 3)),
+                    },
+                ),
+            }
+            leaves = pytree.tree_flatten(tree)[0]
+            return leaves
+
+        x = torch.randn(3, 2)
+        expected = fn(x)
+        fn_opt = torch.compile(fullgraph=True)(fn)
+        actual = fn_opt(x)
+
+        self.assertEqual(actual, expected)
+
+    def test_cxx_pytree_tree_unflatten(self):
+        import torch.utils._cxx_pytree as pytree
+
+        def fn(x, y):
+            tree = {
+                "a": [x, x - 1],
+                "b": x + 2,
+                "c": (
+                    x,
+                    3.0,
+                    [0.0, -x],
+                ),
+                "d": collections.OrderedDict(
+                    {
+                        "e": (2 * x, None),
+                        "f": mytuple(x, x + 1, torch.zeros(4, 3)),
+                    },
+                ),
+            }
+            treespec = pytree.tree_flatten(tree)[1]
+            leaves = [
+                x - 1,
+                y,
+                x * y,
+                3.0,
+                y - 2,
+                torch.zeros(2, 2),
+                2 * y,
+                -y,
+                x + y,
+                x - y,
+                torch.ones(3, 2),
+                1,
+            ]
+            return pytree.tree_unflatten(leaves, treespec)
+
+        x = torch.randn(3, 2)
+        y = torch.randn(3, 2)
+        expected = fn(x, y)
+        fn_opt = torch.compile(fullgraph=True)(fn)
+        actual = fn_opt(x, y)
+
+        self.assertEqual(actual, expected)
+
     def test_shape_env_no_recording(self):
         main = ShapeEnv(should_record_events=False)
 
